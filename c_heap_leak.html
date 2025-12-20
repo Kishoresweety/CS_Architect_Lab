@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heap vs Stack & Memory Leaks</title>
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --stack-color: #2196F3;
+            --heap-free: #333;
+            --heap-used: #E91E63;
+            --heap-leak: #D32F2F; /* Dark Red */
+            --pointer-color: #FFC107;
+            --text-color: #eee;
+        }
+
+        body {
+            font-family: 'Consolas', monospace;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        h2 { margin-bottom: 10px; }
+
+        .container {
+            display: flex;
+            width: 900px;
+            height: 500px;
+            gap: 20px;
+        }
+
+        /* PANELS */
+        .panel {
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-title {
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #555;
+            padding-bottom: 5px;
+            color: #aaa;
+        }
+
+        /* STACK (Left) */
+        .stack-panel { flex: 1; background: #252526; }
+        
+        .stack-frame {
+            border: 2px solid var(--stack-color);
+            padding: 10px;
+            margin-top: auto; /* Bottom up */
+            position: relative;
+        }
+
+        .variable {
+            display: flex;
+            justify-content: space-between;
+            background: #333;
+            padding: 8px;
+            margin: 5px 0;
+            border-radius: 4px;
+            align-items: center;
+        }
+
+        .ptr-val { color: var(--pointer-color); font-weight: bold; }
+
+        /* HEAP (Right) */
+        .heap-panel { flex: 2; background: #111; position: relative; }
+        
+        .heap-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        .heap-block {
+            height: 60px;
+            background: var(--heap-free);
+            border: 1px dashed #555;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: #777;
+            transition: all 0.5s;
+        }
+
+        .heap-block.used {
+            background: var(--heap-used);
+            border: 2px solid #fff;
+            color: #fff;
+            box-shadow: 0 0 10px var(--heap-used);
+        }
+
+        .heap-block.leaked {
+            background: repeating-linear-gradient(
+                45deg,
+                var(--heap-leak),
+                var(--heap-leak) 10px,
+                #8b0000 10px,
+                #8b0000 20px
+            );
+            border-color: #555;
+            color: #fff;
+            opacity: 0.6;
+        }
+
+        /* SVG Overlay for Pointers */
+        svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* CONTROLS */
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 15px 25px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+            color: white;
+            border-radius: 4px;
+        }
+
+        #btn-malloc { background: var(--heap-used); }
+        #btn-free { background: var(--stack-color); }
+        #btn-leak { background: #d32f2f; }
+        
+        button:disabled { background: #444 !important; cursor: not-allowed; opacity: 0.5; }
+
+        .console {
+            width: 900px;
+            height: 100px;
+            background: #000;
+            margin-top: 10px;
+            padding: 10px;
+            font-size: 12px;
+            color: #0f0;
+            overflow-y: auto;
+            border: 1px solid #333;
+        }
+
+    </style>
+</head>
+<body>
+
+    <h2>The Heap: Malloc, Free & Leaks</h2>
+
+    <div class="container">
+        <div class="panel stack-panel">
+            <div class="panel-title">STACK (Local Variables)</div>
+            <div class="stack-frame">
+                <small>void main()</small>
+                <div class="variable">
+                    <span>int* ptr</span>
+                    <span class="ptr-val" id="ptr-display">NULL</span>
+                </div>
+                <div class="variable" id="ptr-display-2-container" style="display:none; opacity:0.5">
+                     <span>int* ptr (Overwritten)</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel heap-panel" id="heap-container">
+            <div class="panel-title">HEAP (Dynamic Memory)</div>
+            <div class="heap-grid">
+                <div class="heap-block" id="h-0">0x500</div>
+                <div class="heap-block" id="h-1">0x504</div>
+                <div class="heap-block" id="h-2">0x508</div>
+                <div class="heap-block" id="h-3">0x50C</div>
+                <div class="heap-block" id="h-4">0x510</div>
+                <div class="heap-block" id="h-5">0x514</div>
+                <div class="heap-block" id="h-6">0x518</div>
+                <div class="heap-block" id="h-7">0x51C</div>
+            </div>
+        </div>
+    </div>
+    
+    <svg id="svg-layer"></svg>
+
+    <div class="console" id="console">
+        > System Ready.<br>
+    </div>
+
+    <div class="controls">
+        <button onclick="doMalloc()" id="btn-malloc">1. ptr = malloc(size)</button>
+        <button onclick="doFree()" id="btn-free" disabled>2. free(ptr)</button>
+        <button onclick="doLeak()" id="btn-leak" disabled>3. RISK: ptr = NULL (Leak)</button>
+    </div>
+
+    <script>
+        let currentAllocIndex = -1;
+        const ptrDisplay = document.getElementById('ptr-display');
+        const consoleDiv = document.getElementById('console');
+        const svg = document.getElementById('svg-layer');
+        const btnMalloc = document.getElementById('btn-malloc');
+        const btnFree = document.getElementById('btn-free');
+        const btnLeak = document.getElementById('btn-leak');
+
+        function log(msg) {
+            consoleDiv.innerHTML += `> ${msg}<br>`;
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
+
+        function doMalloc() {
+            // Find a free block
+            // For simplicity, we just toggle block 2 (0x508)
+            const targetIndex = 2;
+            currentAllocIndex = targetIndex;
+            
+            const block = document.getElementById('h-' + targetIndex);
+            
+            // Update UI
+            block.classList.add('used');
+            block.innerHTML = "ALLOCATED<br>(Data)";
+            
+            ptrDisplay.innerText = "0x508";
+            
+            // Draw Line
+            drawLine();
+
+            log("Executing: ptr = (int*)malloc(sizeof(int));");
+            log("OS: 'I found 4 bytes at 0x508. Here is the address.'");
+
+            // Buttons
+            btnMalloc.disabled = true;
+            btnFree.disabled = false;
+            btnLeak.disabled = false;
+        }
+
+        function doFree() {
+            if (currentAllocIndex === -1) return;
+
+            const block = document.getElementById('h-' + currentAllocIndex);
+            
+            block.classList.remove('used');
+            block.innerHTML = "0x508"; // Reset text
+            
+            ptrDisplay.innerText = "NULL"; // Usually good practice to nullify after free
+            
+            clearLine();
+
+            log("Executing: free(ptr);");
+            log("OS: '0x508 is now marked as free. Others can use it.'");
+            log("Safety: ptr set to NULL.");
+
+            currentAllocIndex = -1;
+            btnMalloc.disabled = false;
+            btnFree.disabled = true;
+            btnLeak.disabled = true;
+        }
+
+        function doLeak() {
+            if (currentAllocIndex === -1) return;
+
+            const block = document.getElementById('h-' + currentAllocIndex);
+            
+            // Simulate Leak: We lose the address
+            ptrDisplay.innerText = "NULL"; 
+            clearLine();
+
+            // VISUALIZE THE LEAK
+            block.classList.remove('used');
+            block.classList.add('leaked');
+            block.innerHTML = "LEAKED!<br>(Orphaned)";
+
+            log("<span style='color:red'>Executing: ptr = NULL; (WITHOUT FREEING FIRST)</span>");
+            log("<span style='color:red'>CRITICAL: You lost the address 0x508!</span>");
+            log("The OS still thinks 0x508 is in use. You cannot free it anymore.");
+            log("This memory is gone until the program restarts.");
+
+            // Reset buttons to allow new allocs (which will consume more memory)
+            btnMalloc.disabled = false; 
+            btnFree.disabled = true;
+            btnLeak.disabled = true;
+
+            // Pick a new slot for next time to show accumulation if we wanted, 
+            // but for this demo, we just stop here or force refresh.
+            btnMalloc.innerText = "Restart Demo";
+            btnMalloc.onclick = () => location.reload();
+        }
+
+        function drawLine() {
+            // Get coordinates
+            const ptrRect = ptrDisplay.getBoundingClientRect();
+            const heapRect = document.getElementById('h-2').getBoundingClientRect();
+            const bodyRect = document.body.getBoundingClientRect();
+
+            // Create Line
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            
+            // Start: Right side of Stack Ptr
+            const x1 = ptrRect.right - bodyRect.left;
+            const y1 = ptrRect.top + (ptrRect.height / 2) - bodyRect.top;
+
+            // End: Left side of Heap Block
+            const x2 = heapRect.left - bodyRect.left;
+            const y2 = heapRect.top + (heapRect.height / 2) - bodyRect.top;
+
+            line.setAttribute('x1', x1);
+            line.setAttribute('y1', y1);
+            line.setAttribute('x2', x2);
+            line.setAttribute('y2', y2);
+            line.setAttribute('stroke', '#FFC107');
+            line.setAttribute('stroke-width', '4');
+            line.setAttribute('id', 'active-ptr-line');
+            
+            svg.appendChild(line);
+        }
+
+        function clearLine() {
+            const line = document.getElementById('active-ptr-line');
+            if(line) line.remove();
+        }
+    </script>
+</body>
+</html>
