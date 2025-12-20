@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Concept: OSI Model Animation</title>
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --text-color: #f0f0f0;
+            --sender-color: #4CAF50;
+            --receiver-color: #2196F3;
+            --packet-color: #ffeb3b;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        h2 { margin-bottom: 20px; text-transform: uppercase; letter-spacing: 2px; }
+
+        .network-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            width: 800px;
+            position: relative;
+            padding: 20px;
+            border: 1px dashed #555;
+            border-radius: 10px;
+        }
+
+        .stack {
+            display: flex;
+            flex-direction: column;
+            width: 200px;
+        }
+
+        .layer {
+            height: 40px;
+            margin: 2px 0;
+            background: #333;
+            border: 1px solid #555;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+
+        /* Color coding the layers */
+        .layer:nth-child(1) { border-left: 5px solid #E91E63; } /* App */
+        .layer:nth-child(2) { border-left: 5px solid #9C27B0; } /* Pres */
+        .layer:nth-child(3) { border-left: 5px solid #673AB7; } /* Sess */
+        .layer:nth-child(4) { border-left: 5px solid #3F51B5; } /* Trans */
+        .layer:nth-child(5) { border-left: 5px solid #2196F3; } /* Net */
+        .layer:nth-child(6) { border-left: 5px solid #00BCD4; } /* Data */
+        .layer:nth-child(7) { border-left: 5px solid #009688; } /* Phys */
+
+        .label {
+            text-align: center;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #888;
+        }
+
+        /* The Data Packet */
+        #packet {
+            width: 180px;
+            height: 30px;
+            background-color: var(--packet-color);
+            color: #000;
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 12px;
+            border-radius: 4px;
+            box-shadow: 0 0 10px rgba(255, 235, 59, 0.5);
+            opacity: 0; /* Hidden initially */
+            z-index: 10;
+        }
+
+        /* Status Log */
+        #status-log {
+            margin-top: 20px;
+            height: 30px;
+            color: var(--packet-color);
+            font-weight: bold;
+        }
+
+        /* The Wire */
+        .wire {
+            position: absolute;
+            bottom: 40px; /* Aligned with Physical Layer */
+            left: 220px;
+            width: 360px;
+            height: 2px;
+            background: #555;
+        }
+
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: var(--sender-color);
+            border: none;
+            color: white;
+            font-family: inherit;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 5px;
+        }
+
+        button:hover { background: #45a049; }
+        button:disabled { background: #555; cursor: not-allowed; }
+
+    </style>
+</head>
+<body>
+
+    <h2>OSI Model Architecture</h2>
+
+    <div class="network-container">
+        <div class="stack" id="sender-stack">
+            <div class="label">SENDER (Encapsulation)</div>
+            <div class="layer" id="s-7">7. Application</div>
+            <div class="layer" id="s-6">6. Presentation</div>
+            <div class="layer" id="s-5">5. Session</div>
+            <div class="layer" id="s-4">4. Transport</div>
+            <div class="layer" id="s-3">3. Network</div>
+            <div class="layer" id="s-2">2. Data Link</div>
+            <div class="layer" id="s-1">1. Physical</div>
+        </div>
+
+        <div class="wire"></div>
+
+        <div id="packet">DATA</div>
+
+        <div class="stack" id="receiver-stack">
+            <div class="label">RECEIVER (Decapsulation)</div>
+            <div class="layer" id="r-7">7. Application</div>
+            <div class="layer" id="r-6">6. Presentation</div>
+            <div class="layer" id="r-5">5. Session</div>
+            <div class="layer" id="r-4">4. Transport</div>
+            <div class="layer" id="r-3">3. Network</div>
+            <div class="layer" id="r-2">2. Data Link</div>
+            <div class="layer" id="r-1">1. Physical</div>
+        </div>
+    </div>
+
+    <div id="status-log">Ready to transmit...</div>
+    <button onclick="startAnimation()" id="btn">Send Data</button>
+
+    <script>
+        const packet = document.getElementById('packet');
+        const statusLog = document.getElementById('status-log');
+        const btn = document.getElementById('btn');
+        
+        // Coordinates for animation logic
+        const senderLayers = [
+            document.getElementById('s-7'), document.getElementById('s-6'), 
+            document.getElementById('s-5'), document.getElementById('s-4'), 
+            document.getElementById('s-3'), document.getElementById('s-2'), 
+            document.getElementById('s-1')
+        ];
+
+        const receiverLayers = [
+            document.getElementById('r-1'), document.getElementById('r-2'), 
+            document.getElementById('r-3'), document.getElementById('r-4'), 
+            document.getElementById('r-5'), document.getElementById('r-6'), 
+            document.getElementById('r-7')
+        ];
+
+        async function startAnimation() {
+            btn.disabled = true;
+            packet.style.opacity = 1;
+            
+            // 1. Encapsulation (Down Sender Stack)
+            statusLog.innerText = "Encapsulating Data...";
+            for (let i = 0; i < senderLayers.length; i++) {
+                highlightLayer(senderLayers[i], '#4CAF50'); // Green
+                movePacketTo(senderLayers[i]);
+                updatePacketText(7 - i); // Update text based on layer
+                await wait(600);
+                unhighlightLayer(senderLayers[i]);
+            }
+
+            // 2. Transmission (Across Wire)
+            statusLog.innerText = "Transmitting over Physical Medium (Bits)...";
+            packet.innerText = "10110101..."; 
+            // Move visually to the right
+            packet.style.transition = "left 1s linear, top 1s linear";
+            const r1Rect = receiverLayers[0].getBoundingClientRect();
+            const containerRect = document.querySelector('.network-container').getBoundingClientRect();
+            
+            packet.style.top = (r1Rect.top - containerRect.top + 5) + "px";
+            packet.style.left = (r1Rect.left - containerRect.left + 10) + "px";
+            
+            await wait(1000);
+
+            // 3. Decapsulation (Up Receiver Stack)
+            statusLog.innerText = "Decapsulating Data...";
+            packet.style.transition = "top 0.5s ease"; // Reset transition style
+            
+            for (let i = 0; i < receiverLayers.length; i++) {
+                highlightLayer(receiverLayers[i], '#2196F3'); // Blue
+                movePacketTo(receiverLayers[i]);
+                updatePacketText(i + 1);
+                await wait(600);
+                unhighlightLayer(receiverLayers[i]);
+            }
+
+            statusLog.innerText = "Data Received Successfully!";
+            packet.innerText = "DATA";
+            btn.disabled = false;
+        }
+
+        function movePacketTo(element) {
+            const rect = element.getBoundingClientRect();
+            const containerRect = document.querySelector('.network-container').getBoundingClientRect();
+            
+            packet.style.top = (rect.top - containerRect.top + 5) + "px";
+            packet.style.left = (rect.left - containerRect.left + 10) + "px";
+        }
+
+        function highlightLayer(element, color) {
+            element.style.backgroundColor = color;
+            element.style.color = 'white';
+        }
+
+        function unhighlightLayer(element) {
+            element.style.backgroundColor = '#333';
+            element.style.color = '#f0f0f0';
+        }
+
+        function updatePacketText(layerNum) {
+            switch(layerNum) {
+                case 7: packet.innerText = "DATA (HTTP/SMTP)"; break;
+                case 6: packet.innerText = "DATA + FORMAT"; break;
+                case 5: packet.innerText = "DATA + SESSION ID"; break;
+                case 4: packet.innerText = "SEGMENT (TCP/UDP)"; break;
+                case 3: packet.innerText = "PACKET (IP)"; break;
+                case 2: packet.innerText = "FRAME (MAC)"; break;
+                case 1: packet.innerText = "BITS (10101)"; break;
+            }
+        }
+
+        function wait(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+    </script>
+</body>
+</html>
