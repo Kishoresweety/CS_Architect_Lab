@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCP Sliding Window Animation</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --packet-empty: #333;
+            --packet-sent: #FFC107; /* Yellow */
+            --packet-acked: #4CAF50; /* Green */
+            --window-border: #FF5252; /* Red */
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        h2 { margin-bottom: 10px; }
+        p { color: #aaa; margin-bottom: 30px; }
+
+        .stream-container {
+            position: relative;
+            display: flex;
+            gap: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        /* The Packets */
+        .packet {
+            width: 60px;
+            height: 60px;
+            background-color: var(--packet-empty);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            position: relative;
+            z-index: 1;
+            transition: background-color 0.3s;
+        }
+
+        .packet span { font-size: 10px; position: absolute; bottom: 5px; color: rgba(255,255,255,0.5); }
+
+        /* The Sliding Window (Red Box) */
+        #window-frame {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            height: 80px;
+            /* Width calculated dynamically: (60px packet + 10px gap) * size - 10px gap + 20px padding */
+            border: 4px solid var(--window-border);
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(255, 82, 82, 0.4);
+            transition: left 0.5s ease-in-out;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        #window-label {
+            position: absolute;
+            top: -25px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            color: var(--window-border);
+            font-weight: bold;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        /* Status Area */
+        .status-panel {
+            width: 600px;
+            display: flex;
+            justify-content: space-between;
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+
+        .log-area {
+            width: 100%;
+            height: 100px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: #ccc;
+        }
+        
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover { background: #444; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .legend {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+        .dot { width: 10px; height: 10px; display: inline-block; border-radius: 50%; margin-right: 5px; }
+    </style>
+</head>
+<body>
+
+    <h2>TCP Sliding Window</h2>
+    <p>Window Size = 3 Packets</p>
+
+    <div class="stream-container" id="stream">
+        <div id="window-frame" style="width: 210px;">
+            <div id="window-label">Current Window</div>
+        </div>
+        
+        </div>
+
+    <div class="legend">
+        <div><span class="dot" style="background:#333"></span>Unsent</div>
+        <div><span class="dot" style="background:#FFC107"></span>Sent (Waiting ACK)</div>
+        <div><span class="dot" style="background:#4CAF50"></span>Acknowledged</div>
+    </div>
+
+    <div class="controls">
+        <button onclick="step()" id="btn-step">Step: Send / Receive ACK</button>
+        <button onclick="reset()" id="btn-reset">Reset</button>
+    </div>
+
+    <div class="status-panel">
+        <div class="log-area" id="log">
+            > Ready to transmit data stream.<br>
+            > Window Size is 3. We can send packets 1, 2, 3 immediately.
+        </div>
+    </div>
+
+    <script>
+        const totalPackets = 8;
+        const windowSize = 3;
+        let windowStart = 0; // Index of the first packet in window
+        let nextToSend = 0;  // Index of next packet to send
+        let ackedIndex = -1; // Highest packet index ACKed
+
+        const stream = document.getElementById('stream');
+        const frame = document.getElementById('window-frame');
+        const logBox = document.getElementById('log');
+        const btnStep = document.getElementById('btn-step');
+
+        // Initialize Packets
+        function init() {
+            // Remove existing packets (keep frame)
+            const existing = document.querySelectorAll('.packet');
+            existing.forEach(e => e.remove());
+
+            for(let i=1; i<=totalPackets; i++) {
+                let div = document.createElement('div');
+                div.className = 'packet';
+                div.id = 'p-'+(i-1);
+                div.innerHTML = `${i} <span>SEQ</span>`;
+                stream.appendChild(div);
+            }
+            updateFramePosition();
+        }
+
+        function log(msg) {
+            logBox.innerHTML += `> ${msg}<br>`;
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        function updateFramePosition() {
+            // Each packet is 60px + 10px gap = 70px per step
+            // Initial offset is 10px padding
+            const offset = 10 + (windowStart * 70);
+            frame.style.left = offset + 'px';
+        }
+
+        async function step() {
+            btnStep.disabled = true;
+
+            // SCENARIO 1: Window is not full, send next packet
+            if (nextToSend < windowStart + windowSize && nextToSend < totalPackets) {
+                const p = document.getElementById('p-' + nextToSend);
+                p.style.backgroundColor = '#FFC107'; // Yellow
+                log(`Sender sends Packet ${nextToSend + 1}.`);
+                nextToSend++;
+            } 
+            // SCENARIO 2: Window is full, we must wait for ACK (Simulated here)
+            else if (ackedIndex < windowStart) {
+                log(`Waiting... Receiver sends ACK for Packet ${windowStart + 1}.`);
+                await new Promise(r => setTimeout(r, 800));
+                
+                // Mark as Green
+                const p = document.getElementById('p-' + windowStart);
+                p.style.backgroundColor = '#4CAF50';
+                p.innerHTML = `${windowStart+1} <span>ACK</span>`;
+                
+                ackedIndex++; // We acked the first item in the window
+                
+                // SLIDE THE WINDOW
+                log(`ACK received! Sliding window to the right.`);
+                windowStart++;
+                updateFramePosition();
+            }
+            else if (windowStart >= totalPackets) {
+                log("Transmission Complete.");
+                return;
+            }
+
+            // Small delay for visual pacing
+            await new Promise(r => setTimeout(r, 500));
+            
+            if(windowStart < totalPackets) {
+                btnStep.disabled = false;
+            } else {
+                btnStep.innerText = "Done";
+            }
+        }
+
+        function reset() {
+            windowStart = 0;
+            nextToSend = 0;
+            ackedIndex = -1;
+            logBox.innerHTML = "> Reset.<br>";
+            btnStep.disabled = false;
+            btnStep.innerText = "Step: Send / Receive ACK";
+            init();
+        }
+
+        init();
+    </script>
+</body>
+</html>
