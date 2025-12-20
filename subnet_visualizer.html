@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IP Subnet Visualization</title>
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --net-color: #4CAF50; /* Green for Network */
+            --host-color: #f44336; /* Red for Host */
+            --text-color: #eee;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        h2 { text-transform: uppercase; letter-spacing: 2px; }
+        
+        .container {
+            background: #252525;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+            width: 800px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        input[type="text"] {
+            background: #333;
+            border: 1px solid #555;
+            color: white;
+            padding: 8px;
+            font-family: inherit;
+            font-size: 1.2rem;
+            width: 200px;
+            text-align: center;
+        }
+
+        input[type="range"] {
+            width: 300px;
+        }
+
+        /* The Binary Visualization Grid */
+        .binary-grid {
+            display: grid;
+            grid-template-columns: repeat(35, 1fr); /* 32 bits + 3 dots */
+            gap: 2px;
+            margin: 20px 0;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .bit {
+            width: 18px;
+            height: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 2px;
+            background: #333;
+            transition: background 0.2s;
+        }
+
+        .dot { 
+            display: flex; 
+            align-items: flex-end; 
+            justify-content: center; 
+            font-weight: bold; 
+            color: #777;
+        }
+
+        /* Color Classes applied by JS */
+        .bit.network { background-color: var(--net-color); color: #000; }
+        .bit.host { background-color: var(--host-color); color: #fff; }
+
+        .info-panel {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 30px;
+            border-top: 1px solid #444;
+            padding-top: 20px;
+        }
+
+        .info-box h3 { margin: 0 0 5px 0; color: #aaa; font-size: 0.9rem; }
+        .info-box .val { font-size: 1.4rem; font-weight: bold; }
+        
+        .net-val { color: var(--net-color); }
+        .host-val { color: var(--host-color); }
+
+        .explanation {
+            margin-top: 10px;
+            font-size: 0.8rem;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>IP & Subnet Mask Visualizer</h2>
+
+    <div class="container">
+        
+        <div class="input-group">
+            <div>
+                <label>IP Address:</label><br>
+                <input type="text" id="ipInput" value="192.168.1.10" onkeyup="update()">
+            </div>
+            <div style="text-align: right;">
+                <label>CIDR (Subnet Mask): <span id="cidrDisplay" style="color:var(--net-color); font-weight:bold;">/24</span></label><br>
+                <input type="range" id="cidrSlider" min="8" max="30" value="24" oninput="update()">
+            </div>
+        </div>
+
+        <div style="display:flex; justify-content: space-between; font-size: 0.8rem; color:#aaa; margin-bottom:5px;">
+            <span>NETWORK BITS (Unchangeable)</span>
+            <span>HOST BITS (Changeable)</span>
+        </div>
+
+        <div class="binary-grid" id="binaryDisplay">
+            </div>
+
+        <div class="info-panel">
+            <div class="info-box">
+                <h3>Network Address (The Street)</h3>
+                <div class="val net-val" id="networkAddr">192.168.1.0</div>
+                <div class="explanation">This is the ID of the whole network.</div>
+            </div>
+            <div class="info-box">
+                <h3>Usable Hosts (Devices)</h3>
+                <div class="val host-val" id="totalHosts">254</div>
+                <div class="explanation">How many devices can fit in this subnet.</div>
+            </div>
+            <div class="info-box">
+                <h3>Subnet Mask</h3>
+                <div class="val" id="maskStr">255.255.255.0</div>
+            </div>
+            <div class="info-box">
+                <h3>Broadcast Address</h3>
+                <div class="val" id="broadcastAddr">192.168.1.255</div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const ipInput = document.getElementById('ipInput');
+        const cidrSlider = document.getElementById('cidrSlider');
+        const cidrDisplay = document.getElementById('cidrDisplay');
+        const binaryDisplay = document.getElementById('binaryDisplay');
+        
+        const elNetAddr = document.getElementById('networkAddr');
+        const elHosts = document.getElementById('totalHosts');
+        const elMask = document.getElementById('maskStr');
+        const elBroad = document.getElementById('broadcastAddr');
+
+        function dec2bin(dec) {
+            return (dec >>> 0).toString(2).padStart(8, '0');
+        }
+
+        function bin2dec(bin) {
+            return parseInt(bin, 2);
+        }
+
+        function update() {
+            let ipStr = ipInput.value;
+            let cidr = parseInt(cidrSlider.value);
+            cidrDisplay.innerText = "/" + cidr;
+
+            // Validate IP
+            let octets = ipStr.split('.');
+            if(octets.length !== 4) return; // Simple validation
+            
+            let binaryString = "";
+            let flatBinary = ""; // pure 1s and 0s without dots
+
+            // Generate Binary Grid
+            binaryDisplay.innerHTML = "";
+            
+            octets.forEach((octet, index) => {
+                let val = parseInt(octet) || 0; // Handle NaN
+                let bin = dec2bin(val);
+                flatBinary += bin;
+
+                // Create bit elements
+                for(let i=0; i<8; i++) {
+                    let bitDiv = document.createElement('div');
+                    bitDiv.className = 'bit';
+                    bitDiv.innerText = bin[i];
+                    
+                    // Determine absolute bit index (0-31)
+                    let globalIndex = (index * 8) + i;
+                    
+                    if(globalIndex < cidr) {
+                        bitDiv.classList.add('network');
+                    } else {
+                        bitDiv.classList.add('host');
+                    }
+                    binaryDisplay.appendChild(bitDiv);
+                }
+
+                // Add dot separator unless it's the last octet
+                if(index < 3) {
+                    let dot = document.createElement('div');
+                    dot.className = 'dot';
+                    dot.innerText = ".";
+                    binaryDisplay.appendChild(dot);
+                }
+            });
+
+            calculateNetwork(flatBinary, cidr);
+        }
+
+        function calculateNetwork(flatBinaryIP, cidr) {
+            // 1. Calculate Network Address (First CIDR bits match IP, rest are 0)
+            let netBin = flatBinaryIP.substring(0, cidr).padEnd(32, '0');
+            let netOctets = [
+                bin2dec(netBin.substr(0,8)),
+                bin2dec(netBin.substr(8,8)),
+                bin2dec(netBin.substr(16,8)),
+                bin2dec(netBin.substr(24,8))
+            ];
+            elNetAddr.innerText = netOctets.join('.');
+
+            // 2. Calculate Broadcast Address (First CIDR bits match IP, rest are 1)
+            let broadBin = flatBinaryIP.substring(0, cidr).padEnd(32, '1');
+            let broadOctets = [
+                bin2dec(broadBin.substr(0,8)),
+                bin2dec(broadBin.substr(8,8)),
+                bin2dec(broadBin.substr(16,8)),
+                bin2dec(broadBin.substr(24,8))
+            ];
+            elBroad.innerText = broadOctets.join('.');
+
+            // 3. Calculate Subnet Mask (CIDR 1s, rest 0s)
+            let maskBin = "".padStart(cidr, '1').padEnd(32, '0');
+            let maskOctets = [
+                bin2dec(maskBin.substr(0,8)),
+                bin2dec(maskBin.substr(8,8)),
+                bin2dec(maskBin.substr(16,8)),
+                bin2dec(maskBin.substr(24,8))
+            ];
+            elMask.innerText = maskOctets.join('.');
+
+            // 4. Calculate Total Hosts (2^(32-CIDR) - 2)
+            let hostBits = 32 - cidr;
+            let totalHosts = Math.pow(2, hostBits) - 2;
+            elHosts.innerText = totalHosts.toLocaleString();
+        }
+
+        // Init
+        update();
+    </script>
+</body>
+</html>
