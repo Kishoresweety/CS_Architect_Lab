@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stack Buffer Overflow Visualization</title>
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --stack-bg: #2d2d2d;
+            --buffer-color: #4CAF50; /* Green (Safe) */
+            --return-addr-color: #FFC107; /* Yellow (Critical) */
+            --overflow-color: #F44336; /* Red (Danger) */
+            --text-color: #eee;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        h2 { text-transform: uppercase; letter-spacing: 2px; color: #F44336; }
+
+        .container {
+            display: flex;
+            gap: 40px;
+            align-items: flex-start;
+        }
+
+        /* Left: The Memory Stack */
+        .stack-container {
+            background: #000;
+            padding: 20px;
+            border: 2px solid #444;
+            border-radius: 10px;
+            width: 300px;
+            position: relative;
+        }
+
+        .stack-label {
+            text-align: center;
+            color: #888;
+            margin-bottom: 10px;
+            font-weight: bold;
+            font-size: 0.8rem;
+        }
+
+        .memory-slot {
+            margin-bottom: 5px;
+            padding: 10px;
+            border: 1px solid #555;
+            text-align: center;
+            font-weight: bold;
+            color: #000;
+            transition: all 0.2s;
+        }
+
+        #mem-buffer {
+            background: var(--buffer-color);
+            height: 100px; /* Represents 8 Bytes */
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            word-break: break-all;
+            font-size: 1.2rem;
+            color: #000;
+        }
+
+        #mem-ret {
+            background: var(--return-addr-color);
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .addr-label {
+            font-size: 0.7rem;
+            color: #aaa;
+            text-align: right;
+            margin-bottom: 2px;
+        }
+
+        /* Right: The Controls */
+        .control-panel {
+            width: 300px;
+            background: #222;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .code-snippet {
+            background: #111;
+            color: #ccc;
+            padding: 10px;
+            font-size: 0.9rem;
+            border-left: 3px solid #2196F3;
+            margin-bottom: 20px;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            font-size: 1.2rem;
+            background: #333;
+            border: 1px solid #555;
+            color: white;
+            font-family: inherit;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+            background: #333;
+            border-radius: 4px;
+        }
+
+        .status.safe { color: #4CAF50; }
+        .status.danger { background: #F44336; color: white; animation: shake 0.5s; }
+
+        @keyframes shake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
+            100% { transform: translateX(0); }
+        }
+
+    </style>
+</head>
+<body>
+
+    <h2>Buffer Overflow Attack</h2>
+
+    <div class="container">
+        <div>
+            <div class="stack-label">STACK MEMORY (High Address)</div>
+            
+            <div class="addr-label">0x7FF4 (Return Address)</div>
+            <div class="memory-slot" id="mem-ret">0x080483 (Main)</div>
+
+            <div class="addr-label">0x7FF0 (Local Buffer)</div>
+            <div class="memory-slot" id="mem-buffer"></div>
+            
+            <div class="stack-label">STACK MEMORY (Low Address)</div>
+        </div>
+
+        <div class="control-panel">
+            <div class="code-snippet">
+                void func() {<br>
+                &nbsp;&nbsp;char buffer[8];<br>
+                &nbsp;&nbsp;gets(buffer); <span style="color:#F44336">// UNSAFE!</span><br>
+                }
+            </div>
+
+            <label>User Input (Max 8 chars):</label>
+            <input type="text" id="userInput" placeholder="Type here..." oninput="updateMemory()" autocomplete="off">
+
+            <div class="status safe" id="status-box">System Status: SAFE</div>
+        </div>
+    </div>
+
+    <script>
+        const bufferSize = 8;
+        const input = document.getElementById('userInput');
+        const memBuffer = document.getElementById('mem-buffer');
+        const memRet = document.getElementById('mem-ret');
+        const statusBox = document.getElementById('status-box');
+        
+        const originalRet = "0x080483 (Main)";
+
+        function updateMemory() {
+            let text = input.value;
+            let len = text.length;
+
+            // 1. Fill Buffer
+            let bufferContent = text.substring(0, bufferSize);
+            memBuffer.innerText = bufferContent;
+
+            // 2. Handle Overflow
+            if (len > bufferSize) {
+                let overflowContent = text.substring(bufferSize);
+                
+                // Visual Change
+                memRet.innerText = overflowContent; 
+                memRet.style.backgroundColor = "#F44336"; // RED
+                memRet.style.color = "#fff";
+                
+                statusBox.innerText = "SEGMENTATION FAULT (CRASH)";
+                statusBox.className = "status danger";
+            } else {
+                // Reset to Safe State
+                memRet.innerText = originalRet;
+                memRet.style.backgroundColor = "#FFC107"; // Yellow
+                memRet.style.color = "#000";
+                
+                statusBox.innerText = "System Status: SAFE";
+                statusBox.className = "status safe";
+            }
+        }
+    </script>
+</body>
+</html>
