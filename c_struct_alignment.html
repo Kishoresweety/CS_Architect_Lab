@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C Struct Alignment Visualizer</title>
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --mem-color: #2d2d2d;
+            --char-color: #E91E63;
+            --int-color: #2196F3;
+            --short-color: #FFC107;
+            --padding-color: #444; /* Grey for wasted space */
+            --text-color: #eee;
+        }
+
+        body {
+            font-family: 'Consolas', monospace;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            display: flex;
+            width: 900px;
+            gap: 40px;
+        }
+
+        /* Left: Code View */
+        .code-box {
+            background: #111;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            font-size: 14px;
+            height: fit-content;
+        }
+
+        .keyword { color: #569CD6; }
+        .type { color: #4EC9B0; }
+        .var { color: #9CDCFE; }
+        .comment { color: #6A9955; display: block; margin-top: 5px; }
+
+        /* Right: Memory Grid */
+        .memory-container {
+            flex: 1;
+        }
+
+        .cpu-word-markers {
+            display: flex;
+            margin-bottom: 5px;
+            color: #888;
+            font-size: 10px;
+            font-weight: bold;
+        }
+        .marker { width: 160px; text-align: center; border-bottom: 1px solid #555; margin-right: 2px;}
+
+        .byte-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr); /* 8 Bytes visual */
+            gap: 4px;
+            width: 100%;
+        }
+
+        .byte {
+            height: 50px;
+            background: #333;
+            border: 1px solid #555;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: #aaa;
+            position: relative;
+            transition: all 0.5s ease;
+        }
+
+        .byte span { z-index: 2; font-weight: bold; font-size: 12px; color: #fff; }
+        .addr { position: absolute; top: 2px; left: 2px; font-size: 8px; color: #666; }
+
+        /* Coloring Classes */
+        .b-char { background: var(--char-color); border-color: var(--char-color); }
+        .b-int { background: var(--int-color); border-color: var(--int-color); }
+        .b-short { background: var(--short-color); border-color: var(--short-color); }
+        .b-pad { 
+            background: repeating-linear-gradient(
+                45deg,
+                #333,
+                #333 5px,
+                #444 5px,
+                #444 10px
+            );
+            border-color: #555; 
+        }
+
+        .info-panel {
+            margin-top: 30px;
+            padding: 15px;
+            background: #252526;
+            border-left: 4px solid var(--int-color);
+        }
+
+        .toggle-btn {
+            margin-bottom: 20px;
+            padding: 10px 20px;
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+            border-radius: 4px;
+        }
+        .toggle-btn:hover { background: #444; }
+
+    </style>
+</head>
+<body>
+
+    <h2>Struct Memory Layout & Padding</h2>
+    
+    <button class="toggle-btn" onclick="toggleMode()" id="modeBtn">Mode: Natural Alignment (Standard)</button>
+
+    <div class="container">
+        
+        <div class="code-box">
+            <div><span class="keyword">struct</span> <span class="type">Data</span> {</div>
+            <div style="padding-left: 20px;">
+                <span class="type">char</span> <span class="var">id</span>; <span style="color:var(--char-color)">// 1 Byte</span>
+            </div>
+            <div style="padding-left: 20px;" id="code-pad1">
+                <span class="comment">// 3 Bytes Padding Added!</span>
+            </div>
+            <div style="padding-left: 20px;">
+                <span class="type">int</span> <span class="var">value</span>; <span style="color:var(--int-color)">// 4 Bytes</span>
+            </div>
+            <div style="padding-left: 20px;">
+                <span class="type">short</span> <span class="var">code</span>; <span style="color:var(--short-color)">// 2 Bytes</span>
+            </div>
+            <div style="padding-left: 20px;" id="code-pad2">
+                <span class="comment">// 2 Bytes Padding Added!</span>
+            </div>
+            <div>};</div>
+        </div>
+
+        <div class="memory-container">
+            <div class="cpu-word-markers">
+                <div class="marker">CPU WORD (4 Bytes)</div>
+                <div class="marker">CPU WORD (4 Bytes)</div>
+                <div class="marker">CPU WORD (4 Bytes)</div>
+            </div>
+
+            <div class="byte-grid" id="grid">
+                </div>
+
+            <div class="info-panel" id="info">
+                <strong>Total Size: 12 Bytes</strong><br>
+                <span style="font-size: 0.9rem; color:#aaa">
+                    The CPU reads memory in 4-byte chunks. To read the 'int' in one cycle, it MUST start at an address divisible by 4 (0x04).
+                </span>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const grid = document.getElementById('grid');
+        const info = document.getElementById('info');
+        const btn = document.getElementById('modeBtn');
+        const codePad1 = document.getElementById('code-pad1');
+        const codePad2 = document.getElementById('code-pad2');
+
+        let isAligned = true;
+
+        function render() {
+            grid.innerHTML = '';
+            
+            if(isAligned) {
+                // ALIGNED LAYOUT (Standard C behavior)
+                // 1. char id (1 byte)
+                createByte(0, 'id', 'b-char');
+                // 2. Padding (3 bytes) to reach 4-byte boundary for int
+                createByte(1, 'PAD', 'b-pad');
+                createByte(2, 'PAD', 'b-pad');
+                createByte(3, 'PAD', 'b-pad');
+                // 3. int value (4 bytes) - Starts at 0x04
+                createByte(4, 'val', 'b-int');
+                createByte(5, 'val', 'b-int');
+                createByte(6, 'val', 'b-int');
+                createByte(7, 'val', 'b-int');
+                // 4. short code (2 bytes)
+                createByte(8, 'code', 'b-short');
+                createByte(9, 'code', 'b-short');
+                // 5. End Padding (2 bytes) to make struct multiple of 4
+                createByte(10, 'PAD', 'b-pad');
+                createByte(11, 'PAD', 'b-pad');
+
+                info.innerHTML = `<strong>Total Size: 12 Bytes (5 Bytes Wasted)</strong><br>
+                <span style="color:#4CAF50">Efficiency: HIGH.</span> The CPU can grab the integer 'value' in exactly ONE cycle because it aligns with the 4-byte Word boundary.`;
+                
+                codePad1.style.display = 'block';
+                codePad2.style.display = 'block';
+                btn.innerText = "Current: Natural Alignment (Fast)";
+            } else {
+                // PACKED LAYOUT (__attribute__((packed)))
+                // 1. char id
+                createByte(0, 'id', 'b-char');
+                // 2. int value (Immediately follows)
+                createByte(1, 'val', 'b-int');
+                createByte(2, 'val', 'b-int');
+                createByte(3, 'val', 'b-int');
+                createByte(4, 'val', 'b-int'); // Crosses boundary!
+                // 3. short code
+                createByte(5, 'code', 'b-short');
+                createByte(6, 'code', 'b-short');
+
+                info.innerHTML = `<strong>Total Size: 7 Bytes (0 Wasted)</strong><br>
+                <span style="color:#f44336">Efficiency: LOW.</span> Look at 'value' (Blue). It spans across two CPU Words. The CPU must fetch Word 1, then fetch Word 2, then bit-shift them to combine. This is 2x slower.`;
+                
+                codePad1.style.display = 'none';
+                codePad2.style.display = 'none';
+                btn.innerText = "Current: Packed (Space Saving, CPU Slow)";
+            }
+        }
+
+        function createByte(addrOffset, label, className) {
+            const div = document.createElement('div');
+            div.className = `byte ${className}`;
+            
+            // Hex Address logic assuming start at 0x00
+            const hex = '0x' + addrOffset.toString(16).toUpperCase().padStart(2, '0');
+            
+            div.innerHTML = `<span class="addr">${hex}</span><span>${label}</span>`;
+            grid.appendChild(div);
+        }
+
+        function toggleMode() {
+            isAligned = !isAligned;
+            render();
+        }
+
+        // Init
+        render();
+    </script>
+</body>
+</html>
