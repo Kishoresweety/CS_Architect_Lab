@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Routing Simulation</title>
+    <style>
+        :root {
+            --bg-color: #111;
+            --router-color: #2196F3;
+            --path-active: #4CAF50;
+            --text-color: #eee;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        h2 { margin-top: 20px; text-transform: uppercase; letter-spacing: 2px; }
+
+        .main-layout {
+            display: flex;
+            width: 1000px;
+            height: 600px;
+            margin-top: 20px;
+        }
+
+        /* The Map Area */
+        .network-map {
+            position: relative;
+            flex: 2;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 10px;
+            margin-right: 20px;
+        }
+
+        /* Nodes (Routers/PCs) */
+        .node {
+            width: 60px;
+            height: 60px;
+            background: #333;
+            border: 2px solid #555;
+            border-radius: 50%;
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+            font-weight: bold;
+            font-size: 12px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            transition: all 0.3s;
+        }
+
+        .node i { font-size: 20px; margin-bottom: 2px; }
+        .node.active { border-color: var(--path-active); box-shadow: 0 0 15px var(--path-active); color: var(--path-active); }
+
+        /* The Packet */
+        .packet {
+            width: 15px;
+            height: 15px;
+            background: #FFC107;
+            border-radius: 50%;
+            position: absolute;
+            z-index: 10;
+            box-shadow: 0 0 10px #FFC107;
+            display: none;
+            transition: left 1s linear, top 1s linear;
+        }
+
+        /* SVG Lines connecting routers */
+        svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+        
+        line { stroke: #444; stroke-width: 2; }
+
+        /* Sidebar: Routing Table Logic */
+        .logic-panel {
+            flex: 1;
+            background: #222;
+            border: 1px solid #444;
+            padding: 20px;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header { font-size: 1.1rem; color: #888; margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 5px;}
+        
+        .code-block {
+            background: #000;
+            color: #0f0;
+            padding: 10px;
+            font-size: 13px;
+            height: 150px;
+            margin-bottom: 20px;
+            border: 1px dashed #333;
+        }
+
+        .stats-block {
+            margin-top: auto;
+        }
+        .stat-row { display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+
+        button {
+            padding: 15px;
+            background: var(--router-color);
+            color: white;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+            border-radius: 5px;
+        }
+        button:hover { background: #1976D2; }
+        button:disabled { background: #444; cursor: not-allowed; }
+
+    </style>
+</head>
+<body>
+
+    <h2>Hop-by-Hop Routing Logic</h2>
+
+    <div class="main-layout">
+        
+        <div class="network-map" id="map">
+            <svg id="connections">
+                </svg>
+
+            <div class="node" id="PC1" style="left: 50px; top: 250px;"><span>PC-A</span><small>192.168.1.5</small></div>
+            
+            <div class="node" id="R1" style="left: 200px; top: 250px;"><span>R1</span><small>Gateway</small></div>
+            
+            <div class="node" id="R2" style="left: 350px; top: 100px;"><span>R2</span><small>ISP-A</small></div>
+            <div class="node" id="R3" style="left: 350px; top: 400px;"><span>R3</span><small>ISP-B</small></div>
+            
+            <div class="node" id="R4" style="left: 500px; top: 250px;"><span>R4</span><small>Backbone</small></div>
+            
+            <div class="node" id="SERVER" style="left: 650px; top: 250px;"><span>SERVER</span><small>8.8.8.8</small></div>
+
+            <div class="packet" id="pkt"></div>
+        </div>
+
+        <div class="logic-panel">
+            <div class="panel-header">Current Router Logic</div>
+            <div class="code-block" id="router-brain">
+                > System Idle.<br>
+                > Waiting for packet...
+            </div>
+
+            <div class="panel-header">Packet Header</div>
+            <div class="stats-block">
+                <div class="stat-row"><span>Source IP:</span> <span id="src-ip">192.168.1.5</span></div>
+                <div class="stat-row"><span>Dest IP:</span> <span style="color:#FFC107">8.8.8.8</span></div>
+                <div class="stat-row"><span>TTL (Time To Live):</span> <span id="ttl-val">64</span></div>
+                <div class="stat-row"><span>Protocol:</span> <span>ICMP (Ping)</span></div>
+            </div>
+
+            <button onclick="startTrace()" id="btn">Trace Route</button>
+        </div>
+
+    </div>
+
+    <script>
+        // Graph definition: Node ID -> { x, y, connections: [Neighbor IDs] }
+        // For visual lines only. Logic is hardcoded for the demo journey.
+        const nodes = {
+            'PC1': { x: 80, y: 280, neighbors: ['R1'] },
+            'R1': { x: 230, y: 280, neighbors: ['PC1', 'R2', 'R3'] },
+            'R2': { x: 380, y: 130, neighbors: ['R1', 'R4'] },
+            'R3': { x: 380, y: 430, neighbors: ['R1', 'R4'] },
+            'R4': { x: 530, y: 280, neighbors: ['R2', 'R3', 'SERVER'] },
+            'SERVER': { x: 680, y: 280, neighbors: ['R4'] }
+        };
+
+        const svg = document.getElementById('connections');
+        const packet = document.getElementById('pkt');
+        const routerBrain = document.getElementById('router-brain');
+        const ttlDisplay = document.getElementById('ttl-val');
+        const btn = document.getElementById('btn');
+        let currentTTL = 64;
+
+        // Draw Lines
+        function drawLines() {
+            let drawn = []; // Keep track to avoid double drawing
+            for(let id in nodes) {
+                let n = nodes[id];
+                n.neighbors.forEach(neighId => {
+                    let pair = [id, neighId].sort().join('-');
+                    if(!drawn.includes(pair)) {
+                        let n2 = nodes[neighId];
+                        let line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        line.setAttribute('x1', n.x);
+                        line.setAttribute('y1', n.y);
+                        line.setAttribute('x2', n2.x);
+                        line.setAttribute('y2', n2.y);
+                        svg.appendChild(line);
+                        drawn.push(pair);
+                    }
+                });
+            }
+        }
+        
+        drawLines();
+
+        // Animation Path sequence
+        // We will take path: PC1 -> R1 -> R2 (Fast path) -> R4 -> Server
+        const pathSequence = ['PC1', 'R1', 'R2', 'R4', 'SERVER'];
+
+        async function startTrace() {
+            btn.disabled = true;
+            currentTTL = 64;
+            ttlDisplay.innerText = currentTTL;
+            routerBrain.innerHTML = "> Packet Generated at Source.<br>> Destination: 8.8.8.8";
+
+            // Initialize Packet Position
+            movePacketToNode('PC1', 0); // 0 duration for instant setup
+            packet.style.display = 'block';
+
+            for (let i = 0; i < pathSequence.length; i++) {
+                let currentNode = pathSequence[i];
+                let nextNode = pathSequence[i+1];
+
+                // Highlight Current Node
+                document.getElementById(currentNode).classList.add('active');
+
+                // Simulate Processing Time
+                if(i > 0) { // Don't decrement on PC1
+                    currentTTL--;
+                    ttlDisplay.innerText = currentTTL;
+                    routerBrain.innerHTML = `> <b>Router ${currentNode}</b> processing...<br>`;
+                    routerBrain.innerHTML += `> Decrement TTL: ${currentTTL}<br>`;
+                    routerBrain.innerHTML += `> Lookup Route Table...<br>`;
+                }
+
+                await wait(800);
+
+                if (nextNode) {
+                    routerBrain.innerHTML += `> Match Found! <br>> Best path to 8.8.8.8 is via Interface <b>${nextNode}</b>.<br>> Forwarding...`;
+                    
+                    // Move Packet
+                    await movePacketToNode(nextNode, 1000); 
+                } else {
+                    routerBrain.innerHTML += `> <b>DESTINATION REACHED!</b><br>> Packet accepted by Application.`;
+                    packet.style.backgroundColor = '#4CAF50'; // Green on success
+                    packet.style.boxShadow = '0 0 15px #4CAF50';
+                }
+
+                document.getElementById(currentNode).classList.remove('active');
+            }
+            
+            btn.disabled = false;
+            btn.innerText = "Trace Again";
+        }
+
+        function movePacketToNode(nodeId, duration) {
+            return new Promise(resolve => {
+                const node = nodes[nodeId];
+                // Offset to center the 15px packet on the 60px node
+                // Node center is at x, y
+                // Packet top/left should be x - 7.5, y - 7.5
+                // Wait... my nodes coordinates in JS are centers, but CSS left/top is top-left corner
+                // Let's just hardcode offsets based on element positions
+                
+                const el = document.getElementById(nodeId);
+                const rect = el.getBoundingClientRect();
+                const container = document.querySelector('.network-map').getBoundingClientRect();
+                
+                const targetLeft = (rect.left - container.left) + 22; // Center horizontally
+                const targetTop = (rect.top - container.top) + 22; // Center vertically
+
+                packet.style.transition = `left ${duration}ms linear, top ${duration}ms linear`;
+                packet.style.left = targetLeft + 'px';
+                packet.style.top = targetTop + 'px';
+
+                setTimeout(resolve, duration);
+            });
+        }
+
+        function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    </script>
+</body>
+</html>
