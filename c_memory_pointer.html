@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C Pointer Visualization</title>
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --code-bg: #2d2d2d;
+            --memory-bg: #252526;
+            --highlight: #FFC107; /* Yellow */
+            --pointer-color: #00BCD4; /* Cyan */
+            --value-change: #4CAF50; /* Green */
+            --text-color: #d4d4d4;
+        }
+
+        body {
+            font-family: 'Consolas', 'Courier New', monospace;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            display: flex;
+            width: 900px;
+            height: 500px;
+            background: #000;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            overflow: hidden;
+        }
+
+        /* Left Side: The C Code */
+        .code-panel {
+            flex: 1;
+            background: var(--code-bg);
+            padding: 20px;
+            border-right: 1px solid #444;
+            display: flex;
+            flex-direction: column;
+        }
+
+        h3 { margin-top: 0; color: #fff; border-bottom: 1px solid #555; padding-bottom: 10px; }
+
+        .code-line {
+            padding: 8px;
+            margin: 2px 0;
+            border-radius: 4px;
+            color: #888; /* Dimmed by default */
+            transition: all 0.3s;
+        }
+
+        .code-line.active {
+            background: #3e3e42;
+            color: #fff;
+            font-weight: bold;
+            border-left: 4px solid var(--highlight);
+        }
+
+        .var-name { color: #9CDCFE; }
+        .type { color: #569CD6; }
+        .num { color: #B5CEA8; }
+        .pointer { color: var(--pointer-color); }
+
+        /* Right Side: The RAM */
+        .memory-panel {
+            flex: 1.5;
+            background: var(--memory-bg);
+            padding: 20px;
+            position: relative;
+        }
+
+        .memory-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .memory-slot {
+            display: flex;
+            align-items: center;
+            background: #333;
+            padding: 10px;
+            border-radius: 6px;
+            border: 2px solid #444;
+            transition: all 0.5s;
+        }
+
+        .address {
+            font-size: 0.8rem;
+            color: #666;
+            width: 80px;
+            text-align: right;
+            margin-right: 15px;
+            font-family: monospace;
+        }
+
+        .cell {
+            width: 120px;
+            height: 50px;
+            background: #1e1e1e;
+            border: 1px solid #555;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .cell-label { font-size: 0.7rem; color: #aaa; position: absolute; top: 2px; left: 5px; }
+        .cell-value { font-size: 1.2rem; font-weight: bold; color: #fff; }
+
+        /* Arrows for pointers */
+        .arrow {
+            flex: 1;
+            height: 2px;
+            background: #555;
+            position: relative;
+            display: none; /* Hidden by default */
+        }
+        .arrow::after {
+            content: '';
+            position: absolute;
+            right: 0;
+            top: -4px;
+            border-left: 10px solid #555;
+            border-top: 5px solid transparent;
+            border-bottom: 5px solid transparent;
+        }
+        
+        .arrow.active { display: block; background: var(--pointer-color); }
+        .arrow.active::after { border-left-color: var(--pointer-color); }
+
+        .explanation-box {
+            margin-top: auto;
+            background: #111;
+            padding: 10px;
+            border: 1px dashed #555;
+            color: var(--highlight);
+            font-size: 0.9rem;
+            min-height: 60px;
+        }
+
+        button {
+            margin-top: 20px;
+            padding: 10px;
+            width: 100%;
+            background: #0E639C;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+        }
+        button:hover { background: #1177BB; }
+        button:disabled { background: #444; cursor: not-allowed; }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="code-panel">
+            <h3>C Code Execution</h3>
+            
+            <div class="code-line" id="line-1">
+                <span class="type">int</span> <span class="var-name">target</span> = <span class="num">10</span>;
+            </div>
+            
+            <div class="code-line" id="line-2">
+                <span class="type">int</span> <span class="pointer">*p</span> = &<span class="var-name">target</span>;
+            </div>
+            
+            <div class="code-line" id="line-3">
+                <span class="pointer">*p</span> = <span class="num">50</span>;
+            </div>
+            
+            <div class="code-line" id="line-4">
+                <span class="type">return</span> <span class="num">0</span>;
+            </div>
+
+            <div class="explanation-box" id="explanation">
+                Click "Next Step" to compile and run.
+            </div>
+
+            <button onclick="nextStep()" id="btn">Next Step</button>
+        </div>
+
+        <div class="memory-panel">
+            <h3>RAM (Random Access Memory)</h3>
+            
+            <div class="memory-grid">
+                
+                <div class="memory-slot" style="opacity: 0.5;">
+                    <div class="address">0x7FF000</div>
+                    <div class="cell"><span class="cell-value" style="color:#555">???</span></div>
+                </div>
+
+                <div class="memory-slot" id="slot-target">
+                    <div class="address">0x7FF004</div>
+                    <div class="cell">
+                        <span class="cell-label">int target</span>
+                        <span class="cell-value" id="val-target">0</span>
+                    </div>
+                </div>
+
+                <div class="memory-slot" style="opacity: 0.5;">
+                    <div class="address">0x7FF008</div>
+                    <div class="cell"><span class="cell-value" style="color:#555">???</span></div>
+                </div>
+
+                <div class="memory-slot" id="slot-pointer">
+                    <div class="address">0x7FF012</div>
+                    <div class="cell">
+                        <span class="cell-label">int *p</span>
+                        <span class="cell-value" id="val-p" style="font-size: 0.9rem;">NULL</span>
+                    </div>
+                    <div class="arrow" id="ptr-arrow" style="position: absolute; left: -140px; top: -75px; width: 130px; transform: rotate(90deg); display:none;"></div> 
+                    </div>
+
+            </div>
+            
+            <svg style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+                      <polygon points="0 0, 10 3.5, 0 7" fill="#00BCD4" />
+                    </marker>
+                </defs>
+                <path id="connection-line" d="" stroke="#00BCD4" stroke-width="3" fill="none" marker-end="url(#arrowhead)" style="opacity: 0; transition: opacity 0.5s;" />
+            </svg>
+
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        const btn = document.getElementById('btn');
+        const expl = document.getElementById('explanation');
+        const line = document.getElementById('connection-line');
+
+        // DOM Elements
+        const slotTarget = document.getElementById('slot-target');
+        const valTarget = document.getElementById('val-target');
+        const slotPointer = document.getElementById('slot-pointer');
+        const valPointer = document.getElementById('val-p');
+
+        function highlightLine(id) {
+            document.querySelectorAll('.code-line').forEach(el => el.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+
+        function nextStep() {
+            step++;
+
+            if (step === 1) {
+                // Initialize integer
+                highlightLine('line-1');
+                expl.innerHTML = "> Allocate 4 bytes at address <b>0x7FF004</b>.<br>> Store value <b>10</b>.";
+                
+                slotTarget.style.borderColor = "#FFC107";
+                valTarget.innerText = "10";
+                valTarget.style.color = "#FFC107";
+            }
+            else if (step === 2) {
+                // Initialize pointer
+                highlightLine('line-2');
+                expl.innerHTML = "> Allocate pointer 'p' at <b>0x7FF012</b>.<br>> Store the ADDRESS of 'target' (<b>0x7FF004</b>) inside 'p'.";
+                
+                slotPointer.style.borderColor = "#00BCD4";
+                valPointer.innerText = "0x7FF004";
+                valPointer.style.color = "#00BCD4";
+
+                // Draw arrow
+                // Start: Right side of Pointer Cell (approx x: 260, y: 310 in panel)
+                // End: Right side of Target Cell (approx x: 260, y: 130 in panel)
+                // Since this is responsive-ish, we hardcode generic Bezier curve for the SVG based on container size
+                // Adjusting d path for visual representation
+                line.setAttribute('d', "M 220 300 C 350 300, 350 145, 230 145");
+                line.style.opacity = "1";
+            }
+            else if (step === 3) {
+                // Dereference
+                highlightLine('line-3');
+                expl.innerHTML = "> <b>*p (Dereference)</b>: Go to the address stored in p (0x7FF004).<br>> Change the value there to <b>50</b>.";
+                
+                // Animation effect
+                line.setAttribute('stroke-width', '6'); // Pulse line
+                setTimeout(() => line.setAttribute('stroke-width', '3'), 300);
+
+                setTimeout(() => {
+                    valTarget.innerText = "50";
+                    valTarget.style.color = "#4CAF50"; // Green for change
+                    valTarget.style.transform = "scale(1.5)";
+                    setTimeout(() => valTarget.style.transform = "scale(1)", 300);
+                }, 500);
+            }
+            else if (step === 4) {
+                highlightLine('line-4');
+                expl.innerText = "Program finished. Memory cleared.";
+                btn.innerText = "Reset";
+            }
+            else {
+                location.reload();
+            }
+        }
+    </script>
+</body>
+</html>
